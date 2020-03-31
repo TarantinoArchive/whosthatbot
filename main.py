@@ -118,9 +118,9 @@ def handle(msg):
             
             bot.sendMessage(chatId, printStr)
 
-        if command == "/set" or userId in [i['user']['id'] for i in bot.getChatAdministrators(chatId)]:
+        if command == "/set":
             # Se la chat è formata da un solo utente o l'utente è un moderatore
-            if bot.getChatMembersCount(chatId)<3: 
+            if bot.getChatMembersCount(chatId)<3 or userId in [i['user']['id'] for i in bot.getChatAdministrators(chatId)]: 
                 if modMon[chatId]==0:
                     modMon[chatId]=1
                     bot.sendMessage(chatId, "✏️ Modalità cambiata da \"Qualunque nel messaggio\" a \"Nome esatto\" ✏️") 

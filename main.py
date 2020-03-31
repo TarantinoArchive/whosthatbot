@@ -7,24 +7,66 @@ from io import BytesIO
 import telepot
 from telepot.loop import MessageLoop
 from bs4 import BeautifulSoup as bs
-bot = telepot.Bot('token')
+bot = telepot.Bot('1089841308:AAGAo5g_Wir3-a61zYjxEbXa6c3aiKt0JAU')
 leaderboard = {}
 nameMon = ''
-ingame = False
+inGame = {}
 actMon = {}
 usernames = {}
-modMon = 0
+defaultLen = {}
+activeHelps = {}
+maxMess = {}
+modMon = {}
 names = open("pkmn.txt", "r+").readlines()
+messageCount = {}
+alreadySelectedLetters = {}
 def handle(msg):
     # Vi prego non ammazzatemi per le variabili globali
-    global ingame, leaderboard, actMon, nameMon, usernames, modMon
+    global inGame, leaderboard, actMon, nameMon, usernames, modMon
 
-    command = msg['text'].split(' ')[0]
+    msgText = msg['text'].split(' ')
+    if len(msgText)>1: command, params = msgText[0], msgText[1:]
+    else: command, params = msgText[0], ''
+
     userId = msg['from']['id']
     chatId = msg['chat']['id']
+    if chatId not in inGame:
+        inGame[chatId] = False
+        maxMess[chatId] = 20
+        activeHelps[chatId] = True
+        defaultLen[chatId] = 1
+        modMon[chatId] = 0
+
     if command=="/help" or command=="/start":
         bot.sendMessage(chatId, "Ciao! I comandi sono molto semplici:\n\n🕹️ Con /whois iniziano i giochi! Il bot manderà una foto zoomata di un Pokémon, il primo che manda il nome del Pokémon in questione vince!\n📃 Con /leaderboard viene mandata la classifica relativa al gruppo\n🏳️ Se un moderatore manda il commando /surrend, il gioco finirà senza alcun vincitore e verrà rivelato il Pokémon attuale\n✏️ Se un moderatore manda il comando /set, la modalità di selezione del Pokémon dagli utenti cambierà")
-    if not ingame:
+    
+    if not inGame[chatId]:
+        if command=="/setHelp":
+            if bot.getChatMembersCount(chatId)<3 or userId in [i['user']['id'] for i in bot.getChatAdministrators(chatId)]:
+                if len(params)>0:
+                    if params[0] in 'trueTrue':
+                        activeHelps[chatId] = True
+                        bot.sendMessage(chatId, "ℹ️ Aiuti attivati ℹ️")
+                    elif params[0] in 'falseFalse':
+                        activeHelps[chatId] = False
+                        bot.sendMessage(chatId, "ℹ️ Aiuti disattivati ℹ️")
+                    elif params[0] == "lunghezza":
+                        if params[1].isdigit():
+                            defaultLen[chatId] = int(params[1])
+                            bot.sendMessage(chatId, "ℹ️ Lunghezza massima dell'aiuto impostata a %s ℹ️" % params[1])
+                        else:
+                            bot.sendMessage(chatId, "⚠️ Parametro non corretto ⚠️")
+                    elif params[0] == "messaggi":
+                        if params[1].isdigit():
+                            maxMess[chatId] = int(params[1])
+                            bot.sendMessage(chatId, "ℹ️ Numero di messaggi prima dell'aiuto impostato a %s ℹ️" % params[1])
+                        else:
+                            bot.sendMessage(chatId, "⚠️ Parametro non corretto ⚠️")
+                else:
+                    bot.sendMessage(chatId, "⚠️ Parametro non corretto ⚠️")
+            else:
+                bot.sendMessage(chatId, "Ehy, " + msg['from']['first_name'] + ' non sei un moderatore!')
+        
         if command=="/whois":
             # Metto in nameMon il nome di un Pokemon, scelto random dal file pkmn.txt, sostituendo spazi con trattini
             nameMon = "-".join(re.findall("[a-zA-Z]+", random.choice(names))).lower()
@@ -40,7 +82,7 @@ def handle(msg):
 
             print(nameMon)
             img = img.crop(randomCrop).save("pokemon.jpg")
-            ingame = True
+            inGame[chatId] = True
 
             # Setto come mon attuale per la chat il mon selezionato randomicamente prima, rimettendo gli spazi al loro posto, sia con le iniziali maiuscole che minuscole
             actMon[chatId] = (nameMon.title().replace('_',' '), nameMon.replace('_',' '))
@@ -76,33 +118,53 @@ def handle(msg):
             
             bot.sendMessage(chatId, printStr)
 
-        if command == "/set":
-            if bot.getChatMembersCount(chatId)<3: # Se la chat è formata da un solo utente
-                if modMon==0:
-                    modMon=1
+        if command == "/set" or userId in [i['user']['id'] for i in bot.getChatAdministrators(chatId)]:
+            # Se la chat è formata da un solo utente o l'utente è un moderatore
+            if bot.getChatMembersCount(chatId)<3: 
+                if modMon[chatId]==0:
+                    modMon[chatId]=1
                     bot.sendMessage(chatId, "✏️ Modalità cambiata da \"Qualunque nel messaggio\" a \"Nome esatto\" ✏️") 
                 else:
-                    modMon=0
-                    bot.sendMessage(chatId, "✏️ Modalità cambiata da \"Nome esatto\" a \"Qualunque nel messaggio\" ✏️") 
-            # Se la chat è un gruppo, controlla che l'utente del messaggio sia tra gli amministratori
-            elif userId in [i['user']['id'] for i in bot.getChatAdministrators(chatId)]:
-                if modMon==0:
-                    modMon=1
-                    bot.sendMessage(chatId, "✏️ Modalità cambiata da \"Qualunque nel messaggio\" a \"Nome esatto\" ✏️") 
-                else:
-                    modMon=0
+                    modMon[chatId]=0
                     bot.sendMessage(chatId, "✏️ Modalità cambiata da \"Nome esatto\" a \"Qualunque nel messaggio\" ✏️") 
             else:
                 bot.sendMessage(chatId, "Ehy, " + msg['from']['first_name'] + ' non sei un moderatore!')
-    if ingame:
+    if inGame[chatId]:
 
+        # Ogni 20 messaggi, se gli amministratori avranno scelto di sì, il bot manderà un aiuto ai partecipanti, indicando una lettera random del nome del Pokémon
+        if chatId not in messageCount:
+            messageCount[chatId] = 0
+            alreadySelectedLetters[chatId] = []
+        messageCount[chatId] += 1
+        
+        # Se il contatore di messaggi è arrivato ad un multiplo di 20 e il numero di lettere date è minore del numero impostato, manda un aiuto
+        if messageCount[chatId]%maxMess[chatId]==0 and len(alreadySelectedLetters[chatId])<len(actMon[chatId][1])-defaultLen[chatId] and activeHelps[chatId]:
+            # Sceglie una lettera random della stringa finchè non gli esce una lettera ancora sconosciuta ai giocatori
+            while 1:
+                randomLetter = random.randrange(0, stop=len(actMon[chatId][1]))
+                if randomLetter not in alreadySelectedLetters[chatId]:
+                    break
+            
+            alreadySelectedLetters[chatId].append(randomLetter)
+
+            # Seleziono le lettere conosciute e sostituisco le altre con degli underscore
+            printMon = ''.join([actMon[chatId][1][l] for l in sorted(alreadySelectedLetters[chatId])])
+            for i in range(len(actMon[chatId][1])):
+                if i>=len(printMon):
+                    break
+                if printMon[i]!=actMon[chatId][1][i]:
+                    listLetters = [c for c in printMon]
+                    listLetters.insert(i, '_')
+                    printMon = ''.join(listLetters)
+            bot.sendMessage(chatId, "❗ La %s lettera è la %s ❗\nIl nome fin'ora rivelato è :\n❗ %s ❗" % (str(randomLetter+1), actMon[chatId][1][randomLetter], printMon))
+        
         # Se la modalità settata con /set è 0, il Pokemon viene cercato in tutta la stringa, altrimenti la stringa deve essere esattamente uguale al nome del Pokemon
-        if (((actMon[chatId][0] in msg['text']) or (actMon[chatId][1] in msg['text'])) and modMon==0) or msg['text']==actMon[chatId][0]:
+        if (((actMon[chatId][0] in msg['text']) or (actMon[chatId][1] in msg['text'])) and modMon[chatId]==0) or msg['text']==actMon[chatId][0]:
             img = Image.open(BytesIO(requests.get("https://img.pokemondb.net/artwork/large/%s.jpg" % nameMon).content)).save("pokemon.jpg")
             bot.sendPhoto(chatId, open("pokemon.jpg", "rb"),"🏅 Complimenti %s!\nIl Pokémon corretto era %s! \n🕹️ Usare il comando /whois per riprovare \n📃 Usare il comando /leaderboard per la classifica" \
                                                             % (msg["from"]["first_name"], actMon[chatId][0]))
             actMon[chatId] = ('', '')
-            ingame = False
+            inGame[chatId] = False
 
             # Dizionario con gli username per stampare la classifica in maniera più carina
             if userId not in usernames:
@@ -118,22 +180,16 @@ def handle(msg):
                 leaderboard[chatId][userId] = 1
             else:
                 leaderboard[chatId][userId] += 1
+            # Ordino la classifica
+            leaderboard[chatId] = {k: i for (k, i) in sorted(leaderboard[chatId].items(), key=lambda kv:(kv[1], kv[0]), reverse=True)}
         if command=="/surrend":
-            # Se la chat è formata da un solo utente
-            if bot.getChatMembersCount(chatId)<3:
+            # Se la chat è formata da un solo utente o l'utente è un moderatore
+            if bot.getChatMembersCount(chatId)<3 or userId in [i['user']['id'] for i in bot.getChatAdministrators(chatId)]:
                 img = Image.open(BytesIO(requests.get("https://img.pokemondb.net/artwork/large/%s.jpg" % nameMon).content)).save("pokemon.jpg")
                 bot.sendPhoto(chatId, open("pokemon.jpg", "rb"),"🏳️ Il Pokémon corretto era %s! \n🕹️ Usare il comando /whois per riprovare \n📃 Usare il comando /leaderboard per la classifica" \
                                                                 % (actMon[chatId][0]))
                 actMon[chatId] = ('', '')
-                ingame = False
-
-            # Se la chat è un gruppo, controlla che l'utente del messaggio sia tra gli amministratori
-            elif userId in [i['user']['id'] for i in bot.getChatAdministrators(chatId)]:
-                img = Image.open(BytesIO(requests.get("https://img.pokemondb.net/artwork/large/%s.jpg" % nameMon).content)).save("pokemon.jpg")
-                bot.sendPhoto(chatId, open("pokemon.jpg", "rb"),"🏳️ Il Pokémon corretto era %s! \n🕹️ Usare il comando /whois per riprovare \n📃 Usare il comando /leaderboard per la classifica" \
-                                                                % (actMon[chatId][0]))
-                actMon[chatId] = ('', '')
-                ingame = False
+                inGame[chatId] = False
             else:
                 bot.sendMessage(chatId, "Ehy, " + msg['from']['first_name'] + ' non sei un moderatore!')
 MessageLoop(bot, handle).run_as_thread()

@@ -17,12 +17,13 @@ defaultLen = {}
 activeHelps = {}
 maxMess = {}
 modMon = {}
+globalLeaderboard = {}
 names = open("pkmn.txt", "r+").readlines()
 messageCount = {}
 alreadySelectedLetters = {}
 def handle(msg):
     # Vi prego non ammazzatemi per le variabili globali
-    global inGame, leaderboard, actMon, nameMon, usernames, modMon
+    global inGame, leaderboard, actMon, nameMon, usernames, modMon, globalLeaderboard
 
     msgText = msg['text'].split(' ')
     if len(msgText)>1: command, params = msgText[0], msgText[1:]
@@ -38,8 +39,11 @@ def handle(msg):
         modMon[chatId] = 0
 
     if command=="/help" or command=="/start":
-        bot.sendMessage(chatId, "Ciao! I comandi sono molto semplici:\n\n🕹️ Con /whois iniziano i giochi! Il bot manderà una foto zoomata di un Pokémon, il primo che manda il nome del Pokémon in questione vince!\n📃 Con /leaderboard viene mandata la classifica relativa al gruppo\n🏳️ Se un moderatore manda il commando /surrend, il gioco finirà senza alcun vincitore e verrà rivelato il Pokémon attuale\n✏️ Se un moderatore manda il comando /set, la modalità di selezione del Pokémon dagli utenti cambierà")
+        bot.sendMessage(chatId, "Ciao! I comandi sono molto semplici:\n\n🕹️ Con /whois iniziano i giochi! Il bot manderà una foto zoomata di un Pokémon, il primo che manda il nome del Pokémon in questione vince!\n📃 Con /leaderboard viene mandata la classifica relativa al gruppo\n🏳️ Se un moderatore manda il commando /surrend, il gioco finirà senza alcun vincitore e verrà rivelato il Pokémon attuale\n✏️ Se un moderatore manda il comando /set, la modalità di selezione del Pokémon dagli utenti cambierà\nPer avere aiuto sul comando /setHelp, digitare /helpMod")
     
+    if command=="/helpMod":
+        bot.sendMessage(chatId, "Con il coomando /setHelp si possono fare diverse cose:\nUsando come parametro un operatore booleano, true o false, si attiveranno o disattiveranno gli aiuti.\nUsando come primo parametro \"messaggi\" e come secondo parametro un numero, gli aiuti verranno mostrati dopo quel numero di messaggi.\nUsando come primo parametro \"lunghezza\" e come secondo parametro un numero, sarà possibile specificare quanti caratteri del nome non far rivelare al bot.")
+
     if not inGame[chatId]:
         if command=="/setHelp":
             if bot.getChatMembersCount(chatId)<3 or userId in [i['user']['id'] for i in bot.getChatAdministrators(chatId)]:
@@ -96,6 +100,8 @@ def handle(msg):
             bot.sendPhoto(chatId, open("pokemon.jpg", "rb"), "Chi è quel Pokémon?")
 
         if command == "/leaderboard":
+            if not leaderboard:
+                bot.sendMessage(chatId, "Questa classifica è vuota!")
             count = 0
             printStr = "📃 Classifica 📃\n\n"
             for user in leaderboard[chatId].keys():
@@ -129,6 +135,32 @@ def handle(msg):
                     bot.sendMessage(chatId, "✏️ Modalità cambiata da \"Nome esatto\" a \"Qualunque nel messaggio\" ✏️") 
             else:
                 bot.sendMessage(chatId, "Ehy, " + msg['from']['first_name'] + ' non sei un moderatore!')
+    
+        if command == "/global":
+            if not leaderboard:
+                bot.sendMessage(chatId, "Questa classifica è vuota!")
+            count = 0
+            printStr = "📃 Classifica Globale 📃\n\n"
+            for user in leaderboard.keys():
+                count += 1
+                if count==1:
+                    printStr += '🥇 '
+                elif count==2:
+                    printStr += '🥈 '
+                elif count==3:
+                    printStr += '🥉 '
+                else:
+                    printStr += str(count)+'. '
+
+                printStr += "@"+usernames[user]+": "+str(leaderboard[user][userId])
+
+                if leaderboard[user][userId]==1:
+                    printStr += " punto\n" 
+                else:
+                    printStr += " punti\n"
+            
+            bot.sendMessage(chatId, printStr)
+
     if inGame[chatId]:
 
         # Ogni 20 messaggi, se gli amministratori avranno scelto di sì, il bot manderà un aiuto ai partecipanti, indicando una lettera random del nome del Pokémon
@@ -180,8 +212,13 @@ def handle(msg):
                 leaderboard[chatId][userId] = 1
             else:
                 leaderboard[chatId][userId] += 1
+            if userId not in globalLeaderboard:
+                globalLeaderboard[userId] = 1
+            else:
+                globalLeaderboard[userId] += 1
             # Ordino la classifica
             leaderboard[chatId] = {k: i for (k, i) in sorted(leaderboard[chatId].items(), key=lambda kv:(kv[1], kv[0]), reverse=True)}
+            globalLeaderboard[chatId] = {k: i for (k, i) in sorted(globalLeaderboard[chatId].items(), key=lambda kv:(kv[1], kv[0]), reverse=True)}
         if command=="/surrend":
             # Se la chat è formata da un solo utente o l'utente è un moderatore
             if bot.getChatMembersCount(chatId)<3 or userId in [i['user']['id'] for i in bot.getChatAdministrators(chatId)]:
